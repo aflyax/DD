@@ -1,0 +1,49 @@
+Part II answer:
+
+From what I understood, the problem would require to build a model that would allow dynamic control over the number of active servers. We don't want to have too few servers (to ensure the response times are not too great), but we don't want to waste electricity of the unneccessary servers either.
+
+We have prior data for 365 days of number of requests processed each second and mean response time for each request. We are given the number of requests and mean response time at time t. My model would predict λ, the mean rate of request arrival, and mean required service time (Tr) at time t+60*15 (15 minutes from the time t). That way we know how many requests are likely to hit the system in 15 minutes and average required service time and can plan accordingly how many servers to turn on (we can calculate the ideal efficiency of processing requests based on the server capacity and predicted number of requests, with expected mean service time, in the system).
+
+As requested, I chose a very simple model that would accomplish this, with expected high accuracy. It would be some version of decision tree ensemble method: e.g., gradient boosting regressor (I have some experience using a scikit-learn gradient boosting regressor library).
+
+The features are:
+
+1. time point (time of the day, in seconds)
+At that time point:
+2. Tr
+3. number of requests
+
+4. mean number of requests (from prior data)
+5. variance of number of requests ("")
+6. mean of Tr
+7. variance of Tr
+8. calculated mean of λ
+9. calculated variance of λ
+10. calculated mean of response time
+11. calculated variance of response time (according to formula Ts = Tr/(1+Q), where Q = rolling mean of number of requests)
+(possibly:)
+12. mean and
+13. variance of rolling mean of number of requests (window=60 sec)
+14.
+15. ditto for Tr
+
+(features 2 through 13 are obtained from smoothed mean/variance curves from a matrix where each second is either a datum from the prior data or an NAN; mean and variance are obtained from numpy.nanmean() and numpy.nanvar() functions).
+
+The "labels" are λ and Tr at time t+60*15.
+
+During the prediction phase (i.e., once the model is tuned, validated, and trained), the model will take features 1-3 as givens and use information of the rest from prior training data.
+
+Hyperparameters that go into the algorithm are:
+
+1. Smoothing cutoff constants for obtaining features 2 through 13
+2. Learning rate
+3. Maximum depth of the tree
+4. Minimum samples split
+5. Number of estimators
+6. Maximum number of features
+
+The first set of hyperparameters need to be tuned separately from the model: we want to make sure the data are smoothed, but not over-smoothed (I did it by eye for Part I by trying a series of values).
+
+Once we have the data loaded in the proper format (including values obtained from smoothed vectors), we do a training/validation/testing split (e.g., 80/10/10). We do a hyper-parameter tuning with the training/validation sets through a grid search (set the number of estimators to 1000, maximum number of features to [15, 4], learning rate to [0.01, 0.05, 0.1], minimum samples split to [1, 5, 10, 20]) and look at np.median(np.sqrt((y_valid - model.predict(X_valid))**2)) after training on (X_train, y_train). After obtaining the best hyper-parameters, we test again on (X_test, y_test).
+
+The model should potentially incorporate guard against outliers, although I would expect the gbc to take care of them.
